@@ -1,5 +1,5 @@
 /**
- * Copyright 2016-2018 the original author or authors.
+ * Copyright 2016-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package ch.rasc.sse.eventbus;
 
 import java.time.Duration;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
@@ -27,9 +28,17 @@ import ch.rasc.sse.eventbus.config.SseEventBusConfigurer;
 @EnableSseEventBus
 public class TestDefaultConfiguration implements SseEventBusConfigurer {
 
+	@Autowired
+	private TestListener testListener;
+
 	@Override
 	public Duration clientExpiration() {
 		return Duration.ofSeconds(10);
+	}
+
+	@Override
+	public SseEventBusListener listener() {
+		return this.testListener;
 	}
 
 	@Bean

@@ -1,5 +1,5 @@
 /**
- * Copyright 2016-2018 the original author or authors.
+ * Copyright 2016-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import javax.annotation.PreDestroy;
 
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.apache.commons.logging.LogFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -62,6 +63,8 @@ public class SseEventBus {
 
 	private LongTaskTimer latencyTimer;
 
+	private final SseEventBusListener listener;
+
 	public SseEventBus(SseEventBusConfigurer configurer,
 			SubscriptionRegistry subscriptionRegistry, MeterRegistry meterRegistry) {
 
@@ -75,6 +78,8 @@ public class SseEventBus {
 
 		this.errorQueue = configurer.errorQueue();
 		this.sendQueue = configurer.sendQueue();
+
+		this.listener = configurer.listener();
 
 		for (int i = 0; i < configurer.noOfWorkerThreads(); i++) {
 			this.taskScheduler.submit(this::eventLoop);
@@ -227,8 +232,10 @@ public class SseEventBus {
 					if (!event.excludeClientIds().contains(client.getId())
 							&& this.subscriptionRegistry.isClientSubscribedToEvent(
 									client.getId(), event.event())) {
-						this.sendQueue
-								.put(new ClientEvent(client, event, convertedValue));
+						ClientEvent clientEvent = new ClientEvent(client, event,
+								convertedValue);
+						this.sendQueue.put(clientEvent);
+						this.listener.afterEventQueued(clientEvent, true);
 					}
 				}
 			}
@@ -236,8 +243,10 @@ public class SseEventBus {
 				for (String clientId : event.clientIds()) {
 					if (this.subscriptionRegistry.isClientSubscribedToEvent(clientId,
 							event.event())) {
-						this.sendQueue.put(new ClientEvent(this.clients.get(clientId),
-								event, convertedValue));
+						ClientEvent clientEvent = new ClientEvent(
+								this.clients.get(clientId), event, convertedValue);
+						this.sendQueue.put(clientEvent);
+						this.listener.afterEventQueued(clientEvent, true);
 					}
 				}
 			}
@@ -248,62 +257,116 @@ public class SseEventBus {
 	}
 
 	private void reScheduleFailedEvents() {
-		List<ClientEvent> failedEvents = new ArrayList<>();
-		this.errorQueue.drainTo(failedEvents);
+		try {
+			List<ClientEvent> failedEvents = new ArrayList<>();
+			this.errorQueue.drainTo(failedEvents);
 
-		for (ClientEvent sseClientEvent : failedEvents) {
-			if (this.subscriptionRegistry.isClientSubscribedToEvent(
-					sseClientEvent.getClient().getId(),
-					sseClientEvent.getSseEvent().event())) {
-				try {
-					this.sendQueue.put(sseClientEvent);
-				}
-				catch (InterruptedException e) {
-					throw new RuntimeException(e);
+			for (ClientEvent sseClientEvent : failedEvents) {
+				if (this.subscriptionRegistry.isClientSubscribedToEvent(
+						sseClientEvent.getClient().getId(),
+						sseClientEvent.getSseEvent().event())) {
+					try {
+						this.sendQueue.put(sseClientEvent);
+						try {
+							this.listener.afterEventQueued(sseClientEvent, false);
+						}
+						catch (Exception e) {
+							LogFactory.getLog(SseEventBus.class)
+									.error("calling afterEventQueued hook failed", e);
+						}
+					}
+					catch (InterruptedException ie) {
+						throw new RuntimeException(ie);
+					}
+					catch (Exception e) {
+						LogFactory.getLog(SseEventBus.class)
+								.error("re-adding event into send queue failed", e);
+						try {
+							this.errorQueue.put(sseClientEvent);
+						}
+						catch (InterruptedException ie) {
+							throw new RuntimeException(ie);
+						}
+					}
 				}
 			}
+		}
+		catch (Exception e) {
+			LogFactory.getLog(SseEventBus.class).error("reScheduleFailedEvents failed",
+					e);
 		}
 	}
 
 	private void eventLoop() {
-		try {
-			while (true) {
+		while (true) {
+			try {
 				ClientEvent clientEvent = this.sendQueue.take();
 				if (clientEvent.getErrorCounter() < this.noOfSendResponseTries) {
 					Client client = clientEvent.getClient();
-					boolean ok = sendEventToClient(clientEvent);
-					if (ok) {
+					Exception e = sendEventToClient(clientEvent);
+					if (e == null) {
 						if (latencyTimer != null) {
 							latencyTimer.duration(clientEvent.getSseEvent().timestamp(), TimeUnit.MILLISECONDS);
 						}
 						client.updateLastTransfer();
+						try {
+							this.listener.afterEventSent(clientEvent, null);
+						}
+						catch (Exception ex) {
+							LogFactory.getLog(SseEventBus.class)
+									.error("calling afterEventSent hook failed", ex);
+						}
 					}
 					else {
 						clientEvent.incErrorCounter();
-						this.errorQueue.put(clientEvent);
+						try {
+							this.errorQueue.put(clientEvent);
+						}
+						catch (InterruptedException ie) {
+							throw new RuntimeException(ie);
+						}
+						try {
+							this.listener.afterEventSent(clientEvent, e);
+						}
+						catch (Exception ex) {
+							LogFactory.getLog(SseEventBus.class)
+									.error("calling afterEventSent hook failed", ex);
+						}
 					}
 				}
 				else {
-					this.unregisterClient(clientEvent.getClient().getId());
+					String clientId = clientEvent.getClient().getId();
+					this.unregisterClient(clientId);
+					try {
+						this.listener.afterClientsUnregistered(
+								Collections.singleton(clientId));
+					}
+					catch (Exception ex) {
+						LogFactory.getLog(SseEventBus.class).error(
+								"calling afterClientsUnregistered hook failed", ex);
+					}
 				}
 			}
-		}
-		catch (InterruptedException e) {
-			throw new RuntimeException(e);
+			catch (InterruptedException ie) {
+				throw new RuntimeException(ie);
+			}
+			catch (Exception ex) {
+				LogFactory.getLog(SseEventBus.class).error("eventLoop run failed", ex);
+			}
 		}
 	}
 
-	private static boolean sendEventToClient(ClientEvent clientEvent) {
+	private static Exception sendEventToClient(ClientEvent clientEvent) {
 		Client client = clientEvent.getClient();
 		try {
 			client.sseEmitter().send(clientEvent.createSseEventBuilder());
 			if (client.isCompleteAfterMessage()) {
 				client.sseEmitter().complete();
 			}
-			return true;
+			return null;
 		}
 		catch (Exception e) {
-			return false;
+			return e;
 		}
 
 	}
@@ -332,6 +395,7 @@ public class SseEventBus {
 				}
 			}
 			staleClients.forEach(this::unregisterClient);
+			this.listener.afterClientsUnregistered(staleClients);
 		}
 	}
 

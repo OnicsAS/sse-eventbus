@@ -1,5 +1,4 @@
-
-[![Build Status](https://api.travis-ci.org/ralscha/sse-eventbus.png)](https://travis-ci.org/ralscha/sse-eventbus)
+![Test Status](https://github.com/ralscha/sse-eventbus/workflows/test/badge.svg)
 
 sse-eventbus is a Java library that sits on top of [Spring's Sever-Sent Event support](https://docs.spring.io/spring/docs/current/spring-framework-reference/web.html#mvc-ann-async-sse).   
 It keeps track of connected clients and broadcasts events to them.
@@ -14,7 +13,7 @@ Enable support by adding ```@EnableSseEventBus``` to a Spring application.
 @SpringBootApplication
 @EnableSseEventBus
 public class Application {
-    ...
+  ...
 }
 ```
 
@@ -27,22 +26,22 @@ The SseEventBus class contains a convenient method ```createSseEmitter``` that d
 ```
 @Controller
 public class SseController {
-	private final SseEventBus eventBus;
-	public SseController(SseEventBus eventBus) {
-		this.eventBus = eventBus;
-	}
+  private final SseEventBus eventBus;
+  public SseController(SseEventBus eventBus) {
+    this.eventBus = eventBus;
+  }
 
-	@GetMapping("/register/{id}")
-	public SseEmitter register(@PathVariable("id") String id) {
-		SseEmitter emitter = new SseEmitter(180_000L);
-		emitter.onTimeout(emitter::complete);
-		this.eventBus.registerClient(id, emitter);
-		this.eventBus.subscribe(id, SseEvent.DEFAULT_EVENT);
-		return emitter;
+  @GetMapping("/register/{id}")
+  public SseEmitter register(@PathVariable("id") String id) {
+    SseEmitter emitter = new SseEmitter(180_000L);
+    emitter.onTimeout(emitter::complete);
+    this.eventBus.registerClient(id, emitter);
+    this.eventBus.subscribe(id, SseEvent.DEFAULT_EVENT);
+    return emitter;
 
-		//OR
-		//return this.eventBus.createSseEmitter(id, SseEvent.DEFAULT_EVENT)
-	}
+    //OR
+    //return this.eventBus.createSseEmitter(id, SseEvent.DEFAULT_EVENT)
+  }
 }
 ```
 
@@ -58,8 +57,8 @@ A simple way is to use libraries like [node-uuid](https://github.com/kelektiv/no
 const uuid = uuid();
 const eventSource = new EventSource(`/register/${uuid}`);
 eventSource.addEventListener('message', response => {
-	//handle the response from the server
-	//response.data contains the data line 
+  //handle the response from the server
+  //response.data contains the data line 
 }, false);
 ```
 
@@ -72,14 +71,14 @@ singleton and call the ```handleEvent``` method
 ```
 @Service
 public class DataEmitterService {
-	private final SseEventBus eventBus;
-	public DataEmitterService(SseEventBus eventBus) {
-		this.eventBus = eventBus;
-	}
+  private final SseEventBus eventBus;
+  public DataEmitterService(SseEventBus eventBus) {
+    this.eventBus = eventBus;
+  }
 
-	public void broadcastEvent() {
-		this.eventBus.handleEvent(SseEvent.ofData("some useful data"));
-	}
+  public void broadcastEvent() {
+    this.eventBus.handleEvent(SseEvent.ofData("some useful data"));
+  }
 
 }
 
@@ -90,16 +89,16 @@ or use Spring's event infrastructure and publish a SseEvent
 ```
 @Service
 public class DataEmitterService {
-	private final ApplicationEventPublisher eventPublisher;
-	// OR: private final ApplicationContext ctx;
-	// this class implements the ApplicationEventPublisher interface
-	public DataEmitterService(ApplicationEventPublisher eventPublisher) {
-		this.eventPublisher = eventPublisher;
-	}
+  private final ApplicationEventPublisher eventPublisher;
+  // OR: private final ApplicationContext ctx;
+  // this class implements the ApplicationEventPublisher interface
+  public DataEmitterService(ApplicationEventPublisher eventPublisher) {
+    this.eventPublisher = eventPublisher;
+  }
 
-	public void broadcastEvent() {
-		this.eventPublisher.publishEvent(SseEvent.ofData("some useful data"));
-	}
+  public void broadcastEvent() {
+    this.eventPublisher.publishEvent(SseEvent.ofData("some useful data"));
+  }
 }
 ```
 
@@ -107,11 +106,11 @@ public class DataEmitterService {
 ## Maven
 The library is hosted on the Central Maven Repository
 ```
-	<dependency>
-		<groupId>ch.rasc</groupId>
-		<artifactId>sse-eventbus</artifactId>
-		<version>1.1.7</version>
-	</dependency>	
+  <dependency>
+    <groupId>ch.rasc</groupId>
+    <artifactId>sse-eventbus</artifactId>
+    <version>1.1.9</version>
+  </dependency>  
 ```
 
 ## Demo
@@ -142,10 +141,20 @@ Fortunately it is possible to polyfill the SSE support where it's missing.
 
 ## Changelog
 
+### 1.1.9 - February 18, 2020
+  * Catch and log exceptions in event loop. Prevents the loop to terminate.
+
+
+### 1.1.8 - December 21, 2019
+  * Resolves [Issue #13](https://github.com/ralscha/sse-eventbus/issues/13): Add lifecycle hooks
+  
+  * Resolves [Issue #12](https://github.com/ralscha/sse-eventbus/issues/12): Hide ImmutableSseEvent completely from public API
+
+
 ### 1.1.7 - May 24, 2018
   * Resolves [Issue #8](https://github.com/ralscha/sse-eventbus/issues/8): Fix handling messages containing a new line character \n
   
-  * Resolves [Issue #6](https://github.com/ralscha/sse-eventbus/issues/6): Make members of DefaultSseEventBusConfiguration protected for easier subclassing 
+  * Resolves [Issue #6](https://github.com/ralscha/sse-eventbus/issues/6): Make members of DefaultSseEventBusConfiguration protected for easier sub classing 
   
 
 ### 1.1.6 - March 21, 2018
@@ -156,20 +165,20 @@ Fortunately it is possible to polyfill the SSE support where it's missing.
 ### 1.1.5 - January 7, 2018
   * Extract subscription registry code out of the SseEventBus class into the interface SubscriptionRegistry and the class DefaultSubscriptionRegistry. 
     This allows a project to customize the existing implementation or write their own implementation. To
-	override the default implementation add a Spring managed bean of type SubscriptionRegistry to your project.   
+  override the default implementation add a Spring managed bean of type SubscriptionRegistry to your project.   
 
-	Example:
-	```
-	@Component
-	public class CustomSubscriptionRegistry extends DefaultSubscriptionRegistry {
+  Example:
+  ```
+  @Component
+  public class CustomSubscriptionRegistry extends DefaultSubscriptionRegistry {
 
-		@Override
-		public boolean isClientSubscribedToEvent(String clientId, String eventName) {
-			return super.isClientSubscribedToEvent(clientId, eventName)
-					|| super.isClientSubscribedToEvent(clientId, "*");
-		}
-	}	
-	```
+    @Override
+    public boolean isClientSubscribedToEvent(String clientId, String eventName) {
+      return super.isClientSubscribedToEvent(clientId, eventName)
+          || super.isClientSubscribedToEvent(clientId, "*");
+    }
+  }  
+  ```
   
 
 ### 1.1.4 - December 15, 2017
@@ -224,9 +233,9 @@ Fortunately it is possible to polyfill the SSE support where it's missing.
   * Add support for excluding clients with the ```addExcludeClientId``` method.
     ``` 
     SseEvent.builder().addExcludeClientId("2")
-		      .event("eventName")
-		      .data("payload")
-		      .build();
+          .event("eventName")
+          .data("payload")
+          .build();
     ```
     
 
