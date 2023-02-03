@@ -19,6 +19,7 @@ jobs:
     - name: Build and deploy to Github Package Registry
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
       run: |
         mkdir -p ~/.m2
         echo "<settings><servers><server><id>github-sse-eventbus</id><username>DatekWireless</username><password>${GITHUB_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
