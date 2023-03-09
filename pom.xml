@@ -12,7 +12,7 @@
 
 	<groupId>ch.rasc</groupId>
 	<artifactId>sse-eventbus</artifactId>
-	<version>1.1.9-METRICS</version>
+	<version>1.1.9-METRICS</version><!-- GitHub CI workflow sets version based on pushed git tag -->
 
 	<inceptionYear>2016</inceptionYear>
 
