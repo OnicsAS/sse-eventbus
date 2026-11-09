@@ -34,6 +34,7 @@ import javax.annotation.PreDestroy;
 
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -263,10 +264,13 @@ public class SseEventBus {
 			this.errorQueue.drainTo(failedEvents);
 
 			for (ClientEvent sseClientEvent : failedEvents) {
-				if (isForRegisteredClient(sseClientEvent)
-						&& this.subscriptionRegistry.isClientSubscribedToEvent(
-								sseClientEvent.getClient().getId(),
-								sseClientEvent.getSseEvent().event())) {
+				if (!isForRegisteredClient(sseClientEvent)) {
+					logDroppedStaleEvent(sseClientEvent);
+					continue;
+				}
+				if (this.subscriptionRegistry.isClientSubscribedToEvent(
+						sseClientEvent.getClient().getId(),
+						sseClientEvent.getSseEvent().event())) {
 					try {
 						this.sendQueue.put(sseClientEvent);
 						try {
@@ -304,6 +308,7 @@ public class SseEventBus {
 			try {
 				ClientEvent clientEvent = this.sendQueue.take();
 				if (!isForRegisteredClient(clientEvent)) {
+					logDroppedStaleEvent(clientEvent);
 					continue;
 				}
 				if (clientEvent.getErrorCounter() < this.noOfSendResponseTries) {
@@ -370,6 +375,15 @@ public class SseEventBus {
 	private boolean isForRegisteredClient(ClientEvent clientEvent) {
 		return this.clients.get(clientEvent.getClient().getId()) == clientEvent
 				.getClient();
+	}
+
+	private static void logDroppedStaleEvent(ClientEvent clientEvent) {
+		Log log = LogFactory.getLog(SseEventBus.class);
+		if (log.isDebugEnabled()) {
+			log.debug("Dropping event " + clientEvent.getSseEvent().event()
+					+ " for client " + clientEvent.getClient().getId()
+					+ ": the client was unregistered or replaced after the event was queued");
+		}
 	}
 
 	private static Exception sendEventToClient(ClientEvent clientEvent) {
