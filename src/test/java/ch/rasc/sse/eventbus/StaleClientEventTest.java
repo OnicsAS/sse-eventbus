@@ -26,6 +26,8 @@ public class StaleClientEventTest {
 
 	private static final Duration SCHEDULER_DELAY = Duration.ofMillis(50);
 
+	// sendGate and sendQueue must be declared before eventBus: its constructor starts
+	// the worker threads, which call sendQueue.take() and wait on sendGate.
 	private final CountDownLatch sendGate = new CountDownLatch(1);
 
 	private final BlockingQueue<ClientEvent> sendQueue = new LinkedBlockingQueue<ClientEvent>() {
