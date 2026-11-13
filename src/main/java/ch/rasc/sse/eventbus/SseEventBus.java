@@ -34,6 +34,7 @@ import javax.annotation.PreDestroy;
 
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -241,10 +242,11 @@ public class SseEventBus {
 			}
 			else {
 				for (String clientId : event.clientIds()) {
-					if (this.subscriptionRegistry.isClientSubscribedToEvent(clientId,
-							event.event())) {
-						ClientEvent clientEvent = new ClientEvent(
-								this.clients.get(clientId), event, convertedValue);
+					Client client = this.clients.get(clientId);
+					if (client != null && this.subscriptionRegistry
+							.isClientSubscribedToEvent(clientId, event.event())) {
+						ClientEvent clientEvent = new ClientEvent(client, event,
+								convertedValue);
 						this.sendQueue.put(clientEvent);
 						this.listener.afterEventQueued(clientEvent, true);
 					}
@@ -262,6 +264,10 @@ public class SseEventBus {
 			this.errorQueue.drainTo(failedEvents);
 
 			for (ClientEvent sseClientEvent : failedEvents) {
+				if (!isForRegisteredClient(sseClientEvent)) {
+					logDroppedStaleEvent(sseClientEvent);
+					continue;
+				}
 				if (this.subscriptionRegistry.isClientSubscribedToEvent(
 						sseClientEvent.getClient().getId(),
 						sseClientEvent.getSseEvent().event())) {
@@ -301,6 +307,10 @@ public class SseEventBus {
 		while (true) {
 			try {
 				ClientEvent clientEvent = this.sendQueue.take();
+				if (!isForRegisteredClient(clientEvent)) {
+					logDroppedStaleEvent(clientEvent);
+					continue;
+				}
 				if (clientEvent.getErrorCounter() < this.noOfSendResponseTries) {
 					Client client = clientEvent.getClient();
 					Exception e = sendEventToClient(clientEvent);
@@ -353,6 +363,26 @@ public class SseEventBus {
 			catch (Exception ex) {
 				LogFactory.getLog(SseEventBus.class).error("eventLoop run failed", ex);
 			}
+		}
+	}
+
+	/**
+	 * Whether the event's client is still the one registered for its id. An event
+	 * queued for a client that has since been unregistered, or replaced by a new
+	 * registration with the same id, is dropped: sending it would go to the old
+	 * emitter, and a failure there must not unregister the id's current client.
+	 */
+	private boolean isForRegisteredClient(ClientEvent clientEvent) {
+		return this.clients.get(clientEvent.getClient().getId()) == clientEvent
+				.getClient();
+	}
+
+	private static void logDroppedStaleEvent(ClientEvent clientEvent) {
+		Log log = LogFactory.getLog(SseEventBus.class);
+		if (log.isDebugEnabled()) {
+			log.debug("Dropping event " + clientEvent.getSseEvent().event()
+					+ " for client " + clientEvent.getClient().getId()
+					+ ": the client was unregistered or replaced after the event was queued");
 		}
 	}
 
