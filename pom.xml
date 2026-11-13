@@ -23,8 +23,8 @@
 	<distributionManagement>
 		<repository>
 			<id>github-sse-eventbus</id>
-			<name>DatekWireless GitHub Apache Maven Packages</name>
-			<url>https://maven.pkg.github.com/DatekWireless/sse-eventbus</url>
+			<name>OnicsAS GitHub Apache Maven Packages</name>
+			<url>https://maven.pkg.github.com/OnicsAS/sse-eventbus</url>
 		</repository>
 	</distributionManagement>
 
